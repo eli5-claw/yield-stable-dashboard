@@ -11,7 +11,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { TrendingUp, TrendingDown, Search, Shield, Wallet } from "lucide-react";
+import { ConnectButton } from "@/components/connect-button";
+import { TrendingUp, TrendingDown, Search, Shield } from "lucide-react";
 
 export default function Home() {
   const topApy = [...yieldStables].sort((a, b) => b.apy - a.apy).slice(0, 5);
@@ -36,10 +37,7 @@ export default function Home() {
             <a href="#" className="text-sm font-medium hover:text-emerald-600">API</a>
           </nav>
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm">
-              <Wallet className="w-4 h-4 mr-2" />
-              Connect
-            </Button>
+            <ConnectButton />
           </div>
         </div>
       </header>
