@@ -1,3 +1,4 @@
+import { PricingComparison } from "@/components/pricing";
 import { yieldStables, formatCurrency, formatPercentage } from "@/lib/data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -222,6 +223,9 @@ export default function Home() {
           </CardContent>
         </Card>
       </section>
+
+      {/* Pricing */}
+      <PricingComparison />
 
       {/* Footer */}
       <footer className="border-t bg-slate-50 dark:bg-slate-950 mt-20">
