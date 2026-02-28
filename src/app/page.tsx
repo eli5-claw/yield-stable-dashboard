@@ -1,220 +1,297 @@
-import { PricingComparison } from "@/components/pricing";
-import { yieldStables, formatCurrency, formatPercentage } from "@/lib/data";
-import { Button } from "@/components/ui/button";
+"use client";
+
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
 } from "@/components/ui/table";
-import { ConnectButton } from "@/components/connect-button";
-import { TrendingUp, TrendingDown, Search, Shield } from "lucide-react";
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { TrendingUp, TrendingDown, Search, Loader2, ExternalLink } from "lucide-react";
 
-export default function Home() {
-  const topApy = [...yieldStables].sort((a, b) => b.apy - a.apy).slice(0, 5);
-  const totalTvl = yieldStables.reduce((sum, s) => sum + s.tvl, 0);
-  const avgApy = yieldStables.reduce((sum, s) => sum + s.apy, 0) / yieldStables.length;
+interface YieldPool {
+  chain: string;
+  project: string;
+  symbol: string;
+  tvlUsd: number;
+  apy: number;
+  apyBase: number;
+  apyReward: number;
+  pool: string;
+  stablecoin: boolean;
+  poolMeta?: string;
+}
+
+export default function YieldDashboard() {
+  const [pools, setPools] = useState<YieldPool[]>([]);
+  const [filteredPools, setFilteredPools] = useState<YieldPool[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [chainFilter, setChainFilter] = useState("all");
+  const [sortBy, setSortBy] = useState<"apy" | "tvl">("apy");
+
+  useEffect(() => {
+    fetchYieldData();
+  }, []);
+
+  useEffect(() => {
+    filterAndSortPools();
+  }, [pools, searchQuery, chainFilter, sortBy]);
+
+  async function fetchYieldData() {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch('https://yields.llama.fi/pools');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Filter for stablecoins with meaningful TVL (>$100K)
+      const stablePools = data.data.filter((pool: YieldPool) => 
+        pool.stablecoin === true && 
+        pool.tvlUsd > 100000
+      );
+      
+      setPools(stablePools);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch data');
+      console.error('Error fetching yield data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function filterAndSortPools() {
+    let filtered = [...pools];
+
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(pool =>
+        pool.project.toLowerCase().includes(query) ||
+        pool.symbol.toLowerCase().includes(query) ||
+        pool.chain.toLowerCase().includes(query)
+      );
+    }
+
+    // Chain filter
+    if (chainFilter !== "all") {
+      filtered = filtered.filter(pool => 
+        pool.chain.toLowerCase() === chainFilter.toLowerCase()
+      );
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      if (sortBy === "apy") {
+        return b.apy - a.apy;
+      }
+      return b.tvlUsd - a.tvlUsd;
+    });
+
+    setFilteredPools(filtered);
+  }
+
+  const formatCurrency = (value: number) => {
+    if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
+    if (value >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
+    if (value >= 1e3) return `$${(value / 1e3).toFixed(2)}K`;
+    return `$${value.toFixed(2)}`;
+  };
+
+  const formatAPY = (apy: number) => {
+    return `${apy.toFixed(2)}%`;
+  };
+
+  // Get unique chains for filter
+  const chains = [...new Set(pools.map(p => p.chain))].sort();
+
+  // Calculate stats
+  const totalTvl = pools.reduce((sum, p) => sum + p.tvlUsd, 0);
+  const avgApy = pools.length > 0 
+    ? pools.reduce((sum, p) => sum + p.apy, 0) / pools.length 
+    : 0;
+  const topApy = pools.length > 0 ? Math.max(...pools.map(p => p.apy)) : 0;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+          <p className="text-muted-foreground">Loading yield data from DeFiLlama...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle className="text-red-600">Error Loading Data</CardTitle>
+            <CardDescription>{error}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={fetchYieldData} className="w-full">
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
-      {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm dark:bg-slate-950/80 sticky top-0 z-50">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-bold text-xl">YieldStable</span>
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold">Yield Stable Dashboard</h1>
+            <p className="text-muted-foreground">
+              Real-time yield data from DeFiLlama • {pools.length} pools tracked
+            </p>
           </div>
-          <nav className="hidden md:flex items-center gap-6">
-            <a href="#" className="text-sm font-medium hover:text-emerald-600">Dashboard</a>
-            <a href="#" className="text-sm font-medium hover:text-emerald-600">Compare</a>
-            <a href="#" className="text-sm font-medium hover:text-emerald-600">Portfolio</a>
-            <a href="#" className="text-sm font-medium hover:text-emerald-600">API</a>
-          </nav>
-          <div className="flex items-center gap-3">
-            <ConnectButton />
-          </div>
+          <Button variant="outline" onClick={fetchYieldData}>
+            Refresh Data
+          </Button>
         </div>
-      </header>
 
-      {/* Hero */}
-      <section className="container mx-auto px-4 py-12 md:py-20">
-        <div className="text-center max-w-3xl mx-auto">
-          <Badge variant="secondary" className="mb-4">
-            Track 88+ Yield-Bearing Stablecoins
-          </Badge>
-          <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-6">
-            Find the Best{" "}
-            <span className="bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-              Stablecoin Yields
-            </span>
-          </h1>
-          <p className="text-lg text-muted-foreground mb-8">
-            Compare APYs across Aave, Compound, Curve, Ethena, and more. 
-            Real-time data, risk metrics, and portfolio tracking.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" className="bg-emerald-600 hover:bg-emerald-700">
-              Explore Yields
-            </Button>
-            <Button size="lg" variant="outline">
-              View API
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* Stats */}
-      <section className="container mx-auto px-4 pb-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Total Value Locked</CardDescription>
-              <CardTitle className="text-3xl">{formatCurrency(totalTvl)}</CardTitle>
+              <CardTitle className="text-2xl">{formatCurrency(totalTvl)}</CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Across {yieldStables.length} yield-bearing stablecoins
-              </p>
-            </CardContent>
           </Card>
+          
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Average APY</CardDescription>
-              <CardTitle className="text-3xl">{avgApy.toFixed(2)}%</CardTitle>
+              <CardTitle className="text-2xl">{formatAPY(avgApy)}</CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Weighted average across all protocols
-              </p>
-            </CardContent>
           </Card>
+          
           <Card>
             <CardHeader className="pb-2">
-              <CardDescription>Top Yield</CardDescription>
-              <CardTitle className="text-3xl">{topApy[0]?.apy.toFixed(2)}%</CardTitle>
+              <CardDescription>Top APY</CardDescription>
+              <CardTitle className="text-2xl text-emerald-600">{formatAPY(topApy)}</CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                {topApy[0]?.name} on {topApy[0]?.chain}
-              </p>
-            </CardContent>
           </Card>
         </div>
-      </section>
 
-      {/* Top Yields */}
-      <section className="container mx-auto px-4 py-12">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold">Top Yields</h2>
-          <Button variant="outline" size="sm">View All</Button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          {topApy.map((stable) => (
-            <Card key={stable.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">{stable.symbol}</CardTitle>
-                  {stable.audited && (
-                    <Shield className="w-4 h-4 text-emerald-500" />
-                  )}
-                </div>
-                <CardDescription>{stable.protocol}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-emerald-600">
-                  {stable.apy.toFixed(2)}%
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  APY
-                </p>
-                <div className="mt-4 pt-4 border-t">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">TVL</span>
-                    <span className="font-medium">{formatCurrency(stable.tvl)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm mt-2">
-                    <span className="text-muted-foreground">Chain</span>
-                    <Badge variant="outline" className="text-xs">
-                      {stable.chain}
-                    </Badge>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
+        {/* Filters */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search protocol, token, or chain..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              
+              <Select value={chainFilter} onValueChange={setChainFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="All Chains" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Chains</SelectItem>
+                  {chains.map(chain => (
+                    <SelectItem key={chain} value={chain}>{chain}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as "apy" | "tvl")}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="apy">Sort by APY</SelectItem>
+                  <SelectItem value="tvl">Sort by TVL</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* Full Table */}
-      <section className="container mx-auto px-4 py-12">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
-          <h2 className="text-2xl font-bold">All Yield-Bearing Stablecoins</h2>
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search protocols..." className="pl-9" />
-          </div>
-        </div>
-        
+        {/* Table */}
         <Card>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Asset</TableHead>
                   <TableHead>Protocol</TableHead>
+                  <TableHead>Token</TableHead>
                   <TableHead>Chain</TableHead>
                   <TableHead className="text-right">APY</TableHead>
                   <TableHead className="text-right">TVL</TableHead>
-                  <TableHead className="text-right">7d Change</TableHead>
-                  <TableHead className="text-center">Audited</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {yieldStables.map((stable) => (
-                  <TableRow key={stable.id} className="hover:bg-slate-50 dark:hover:bg-slate-900">
+                {filteredPools.slice(0, 50).map((pool) => (
+                  <TableRow key={pool.pool}>
+                    <TableCell className="font-medium">{pool.project}</TableCell>
                     <TableCell>
-                      <div>
-                        <div className="font-medium">{stable.name}</div>
-                        <div className="text-sm text-muted-foreground">{stable.symbol}</div>
+                      <div className="flex items-center gap-2">
+                        {pool.symbol}
+                        {pool.poolMeta && (
+                          <Badge variant="secondary" className="text-xs">
+                            {pool.poolMeta}
+                          </Badge>
+                        )}
                       </div>
                     </TableCell>
-                    <TableCell>{stable.protocol}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{stable.chain}</Badge>
+                      <Badge variant="outline">{pool.chain}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <span className="font-bold text-emerald-600">
-                        {stable.apy.toFixed(2)}%
+                        {formatAPY(pool.apy)}
                       </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(stable.tvl)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className={`flex items-center justify-end gap-1 ${
-                        stable.change7d >= 0 ? "text-emerald-600" : "text-red-600"
-                      }`}>
-                        {stable.change7d >= 0 ? (
-                          <TrendingUp className="w-4 h-4" />
-                        ) : (
-                          <TrendingDown className="w-4 h-4" />
-                        )}
-                        {formatPercentage(stable.change7d)}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {stable.audited ? (
-                        <Shield className="w-5 h-5 text-emerald-500 mx-auto" />
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
+                      {pool.apy > 10 && (
+                        <TrendingUp className="inline w-4 h-4 text-emerald-600 ml-1" />
                       )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(pool.tvlUsd)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <a
+                        href={`https://defillama.com/yields/pool/${pool.pool}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button variant="ghost" size="sm">
+                          <ExternalLink className="w-4 h-4" />
+                        </Button>
+                      </a>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -222,32 +299,13 @@ export default function Home() {
             </Table>
           </CardContent>
         </Card>
-      </section>
 
-      {/* Pricing */}
-      <PricingComparison />
-
-      {/* Footer */}
-      <footer className="border-t bg-slate-50 dark:bg-slate-950 mt-20">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-                <TrendingUp className="w-4 h-4 text-white" />
-              </div>
-              <span className="font-bold">YieldStable</span>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Built by Eli5DeFi • Data for educational purposes
-            </p>
-            <div className="flex items-center gap-4">
-              <a href="#" className="text-sm text-muted-foreground hover:text-foreground">Twitter</a>
-              <a href="#" className="text-sm text-muted-foreground hover:text-foreground">GitHub</a>
-              <a href="#" className="text-sm text-muted-foreground hover:text-foreground">API</a>
-            </div>
+        {filteredPools.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">No pools match your filters</p>
           </div>
-        </div>
-      </footer>
+        )}
+      </div>
     </div>
   );
 }
